@@ -1,0 +1,33 @@
+// *******************************************************
+//
+// button.h
+//
+//  Support for buttons with integrated debouncing
+//  Stellaris LM3S1968 EVK
+//
+// *******************************************************
+
+#ifndef BUTTON_H_
+#define BUTTON_H_
+
+// NUMBER OF CONSECUTIVE READS REQUIRED FOR PIN CHANGOVER
+#define SWITCHOVER_THRESHOLD 5
+
+enum button_state {UP, DOWN, PUSHED};
+
+// Button structure
+typedef struct {
+	unsigned char ucState;	// State of the button as seen externally
+	unsigned char ucPinState;	// Actual value on the pin
+	unsigned char ucSamePinStateCount;	// Number of consecutive reads
+	unsigned long ulPort;
+	unsigned char ucPin;
+} button_t;
+
+// PROTOTYPES
+void buttonInit(button_t *button, unsigned long ulPort, unsigned char ucPin);
+void buttonUpdate(button_t *button, long portGRead);
+unsigned char buttonPushed(button_t *button);
+unsigned char buttonDown(button_t *button);
+
+#endif /*BUTTON_H_*/

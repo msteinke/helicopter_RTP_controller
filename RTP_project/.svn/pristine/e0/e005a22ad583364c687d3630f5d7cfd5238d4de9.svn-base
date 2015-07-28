@@ -1,0 +1,91 @@
+// *******************************************************
+//
+//	heliDisplay.c
+//
+// Module for non-generic display functions related to the helicopter project
+//  Stellaris LM3S1968 EVK
+// P.J. Bones UCECE
+// Last modified:  13.3.2013
+//
+// *******************************************************
+
+#include "heliDisplay.h"
+#include "drivers/rit128x96x4.h"
+
+
+//*****************************************************************************
+//
+// Display running time
+//
+//*****************************************************************************
+void
+displayClock (unsigned long long ullTime)
+{
+	char string[100];
+	sprintf(string, "time (S): %u", ullTime);
+    RIT128x96x4StringDraw(string, 5, 5, 15);
+}
+
+//*****************************************************************************
+//
+// Display # of pin triggered interrupts
+//
+//*****************************************************************************
+void
+displaySMPLS(void)
+{
+	/*
+	char string[100];
+	IntMasterDisable();
+	sprintf(string, "Periods Timed: %u", g_ulSampCnt);
+	IntMasterEnable();
+    RIT128x96x4StringDraw(string, 5, 25, 15);
+    */
+}
+
+//*****************************************************************************
+//
+// Display desired and actual heading
+//
+//*****************************************************************************
+void
+displayYaw(unsigned short yaw_clicks)
+{
+
+	char string[100];
+	IntMasterDisable();
+	sprintf(string, "Yaw:", yaw_clicks);
+    RIT128x96x4StringDraw(string, 5, 25, 15);
+}
+
+//*****************************************************************************
+//
+// Display measured period
+//
+//*****************************************************************************
+
+/*		REMOVED DUE TO SYSTICK RATE ISSUE, MODIFY AND RE-INTRODUCE IF NECISSARY
+ * 		ONLY USED FOR DISPLAYING MILESTONE ONE INFORMATION ANYWAY
+void
+displayPeriod (float period)
+{
+	float truePeriod = //Cannot use systick rate as not part of moduleperiod*(1.0/(float)SYSTICK_RATE);
+	char string[100];
+	sprintf(string, "F (Hz): %.1f", (1.0/truePeriod));
+    RIT128x96x4StringDraw(string, 5, 25, 15);
+	sprintf(string, "T (S): %.6f", truePeriod);
+    RIT128x96x4StringDraw(string, 5, 45, 15);
+    //SysTickPeriodGet());//
+}
+*/
+
+//*****************************************************************************
+//
+// clear display
+//
+//*****************************************************************************
+void
+displayClear(void)
+{
+	RIT128x96x4Clear();
+}

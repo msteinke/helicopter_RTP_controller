@@ -1,0 +1,172 @@
+// *******************************************************
+//
+// height.c
+//
+// Functions to set-up height measurement for a helicopter
+//  Stellaris LM3S1968 EVK
+//
+// *******************************************************
+
+#include "height.h"
+
+#include "inc/hw_memmap.h"
+#include "inc/hw_types.h"
+#include "driverlib/adc.h"
+#include "driverlib/gpio.h"
+#include "driverlib/pwm.h"
+#include "driverlib/sysctl.h"
+#include "circBuf.h"
+#include "driverlib/interrupt.h"
+
+// STATIC VARIABLES - do these need to be volatile?
+// Global for helicopter height
+static unsigned long g_height;
+
+static circBuf_t g_heightBuf;
+
+
+/// ======================================================
+/// ====== good stuff below this line =====================
+
+// *******************************************************
+// Initializes the ADC pins and their ISRs.
+void heightInit(void)
+{
+	// using code from WEEK-2_ADC, my_adc.c written by Dr. Steve Weddell
+
+
+
+	//SysCtlClockSet(SYSCTL_SYSDIV_10 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN |
+	//                 SYSCTL_XTAL_8MHZ);
+
+	//
+	// The ADC0 peripheral must be enabled for use.
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_ADC0);
+
+	//
+	// For this example ADC0 is used with AIN0 on port B1. This
+	// was given by the LM3S1968 data sheet.
+	// Therefore, GPIO port B needs to be enabled
+	// so these pins can be used.
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
+
+	// Select the analog ADC function for these pins.
+	// The LM3S1968 data sheet was consulted to see which functions are
+	// allocated per pin.
+	GPIOPinTypeADC(GPIO_PORTB_BASE, GPIO_PIN_1);
+
+	// Enable sample sequence 3 with a processor signal trigger.  Sequence 3
+	// will do a single sample when the processor sends a signal to start the
+	// conversion.  Each ADC module has 4 programmable sequences, sequence 0
+	// to sequence 3.  This example is arbitrarily using sequence 3.
+	ADCSequenceConfigure(ADC0_BASE, 3, ADC_TRIGGER_PROCESSOR, 0);
+
+	//
+	// Configure step 0 on sequence 3.  Sample channel 0 (ADC_CTL_CH0) in
+	// single-ended mode (default) and configure the interrupt flag
+	// (ADC_CTL_IE) to be set when the sample is done.  Tell the ADC logic
+	// that this is the last conversion on sequence 3 (ADC_CTL_END).  Sequence
+	// 3 has only one programmable step.  Sequence 1 and 2 have 4 steps, and
+	// sequence 0 has 8 programmable steps.  Since we are only doing a single
+	// conversion using sequence 3 we will only configure step 0.  For more
+	// information on the ADC sequences and steps, reference the datasheet.
+	ADCSequenceStepConfigure(ADC0_BASE, 3, 0, ADC_CTL_CH0 | ADC_CTL_IE |
+							 ADC_CTL_END);
+
+	//
+	// Since sample sequence 3 is now configured, it must be enabled.
+	ADCSequenceEnable(ADC0_BASE, 3);
+
+	//
+	// Clear the interrupt status flag.  This is done to make sure the
+	// interrupt flag is cleared before we sample.
+	ADCIntClear(ADC0_BASE, 3);
+
+	initCircBuf (&g_heightBuf, CIRCBUF_SIZE);
+
+}
+
+// *******************************************************
+// Takes an ADC sample. This is the location of
+// the helicopter on the vertical axis.
+void heightSample(void)
+{
+	//* we could just read ADC every time we call this
+	//* not much need to use systick as with yaw??
+	//* could combine yaw and height ISRs in one.
+
+	unsigned long ulValue[10];
+
+    //
+    // Trigger the ADC conversion.
+    ADCProcessorTrigger(ADC0_BASE, 3);
+
+    //
+    // Wait for conversion to be completed.
+    while(!ADCIntStatus(ADC0_BASE, 3, false))
+    {
+    }
+
+    // Read ADC Value.
+    IntMasterDisable();
+    ADCSequenceDataGet(ADC0_BASE, 3, ulValue);
+    IntMasterEnable();
+
+    g_height = ulValue[0];
+	if (((int)ulValue[0] > 10000) || ((int)ulValue[0] < -10000))
+	{
+		ulValue[0] += 1 - 1;
+	}
+
+    writeCircBuf(&g_heightBuf, ulValue[0]);
+
+}
+
+// *******************************************************
+// Returns the height of the heli. This is the location of
+// the helicopter on the vertical axis.
+unsigned long heightGet(void)
+{
+	//* we could just read ADC every time we call this
+	//* not much need to use systick as with yaw??
+	//* could combine yaw and height ISRs in one.
+
+	int sum = 0;
+	short i = 0;
+	for (i = 0; i < CIRCBUF_SIZE; i++)
+	{
+		sum += (int)readCircBuf(&g_heightBuf);
+	}
+
+	if ((sum > 10000) || (sum < -10000))
+	{
+		sum += 1 - 1;
+	}
+
+    return (unsigned long)(sum/CIRCBUF_SIZE);
+}
+
+
+// *******************************************************
+// Returns the height of the heli. This is the location of
+// the helicopter on the vertical axis.
+unsigned long heightGetRaw(void)
+{
+	//* we could just read ADC every time we call this
+	//* not much need to use systick as with yaw??
+	//* could combine yaw and height ISRs in one.
+
+    return g_height;
+}
+
+// *******************************************************
+// Returns the last known direction of movement of heli.
+// Do we need this?
+int heightGetDirection(void);
+
+
+// *******************************************************
+// Sets the height to a desired value (for calibration)
+// Do we need this?
+void heightSet(int value);
+

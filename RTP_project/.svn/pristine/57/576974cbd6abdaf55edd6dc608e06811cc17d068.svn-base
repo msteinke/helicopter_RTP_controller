@@ -1,0 +1,167 @@
+// *******************************************************
+//
+// PID.c
+//
+// Functions to set-up PID for a helicopter
+//  Stellaris LM3S1968 EVK
+//
+// using code from Michael Hayes
+// *******************************************************
+
+#include "PID.h"
+
+#include "inc/hw_memmap.h"
+#include "inc/hw_types.h"
+#include "driverlib/gpio.h"
+#include "driverlib/pwm.h"
+#include "driverlib/sysctl.h"
+#include "mPWM.h" // so that i can have PWM_MAX and PWM_MIN defs
+
+
+
+/// ======================================================
+/// ====== good stuff below this line =====================
+
+void PIDInit(pid_t* state)
+{
+	state->error_integrated = 0.0;
+	state->error_previous = 0.0;
+	state->K_P = 0.0;
+	state->K_I = 0.0;
+	state->K_D = 0.0;
+	state->enabled = true;
+	state->windup = false;
+	state->control_previous = 0.0;
+}
+
+float PIDUpdate(pid_t* state, float error, float delta_t)
+{
+	float control = 0;
+
+	//
+	// only do the calculation if the PID is enabled
+	if (state->enabled && state->windup == false)
+	{
+		control = PIDCaclulate(state, error, delta_t);
+	}
+	else
+	{
+		control = state->control_previous;
+	}
+
+	if ((control > 98.0) || (control < 0.0))
+	{
+		control += 0;
+	}
+
+	/*
+	//
+	// check for integrator wind-up
+	if ((control >= PWM_MAX) && (error >= 0))
+	{
+		//control = PWM_MAX;
+		state->windup = true;
+	}
+	else if ((control <= PWM_MIN) && (error <= 0))
+	{
+		//control = PWM_MIN;
+		state->windup = true;
+	}
+	else
+	{
+		state->windup = false;
+	}
+	*/
+
+	// check that the control does not
+	// exceed PWM limits
+	if (control >= PWM_MAX)
+	{
+		control = PWM_MAX;
+	}
+	else if (control <= PWM_MIN)
+	{
+		control = PWM_MIN;
+	}
+
+	return control;
+}
+
+
+float PIDCaclulate(pid_t* state, float error, float delta_t)
+{
+	float error_derivative;
+	float control;
+
+
+	// put our PID constants into useful variables
+	float proportional_gain = state->K_P;
+	float integral_gain = state->K_I;
+	float derivative_gain = state->K_D;
+
+	state->error_integrated += error * delta_t;
+	error_derivative = (error - state->error_previous) / delta_t;
+
+
+	control = error * proportional_gain + state->error_integrated * integral_gain + error_derivative * derivative_gain;
+
+	state->error_previous = error;
+	state->control_previous = control;
+
+	/*if (control >= YAW_MAX)
+	{
+		control = YAW_MAX;
+	}
+	else if (control <= YAW_MIN)
+	{
+		control = YAW_MIN;
+	}*/
+
+	return control;
+}
+
+void PIDSet(pid_t* state, float K_P, float K_I, float K_D)
+{
+	state->K_P = K_P;
+	state->K_I = K_I;
+	state->K_D = K_D;
+}
+
+
+void PIDEnable(pid_t* state)
+{
+	state->enabled = true;
+}
+
+void PIDDisable(pid_t* state)
+{
+	state->enabled = false;
+}
+
+/*
+ *
+ * void PIDInit ( pid_state_t * state )
+{
+	state->error_floategrated = 0;
+	state->error_previous = 0;
+}
+
+float PIDUpdate ( pid_state_t * state ,
+				float error ,
+				float proportional_gain ,
+				float integral_gain ,
+				float derivative_gain ,
+				float delta_t )
+{
+	float error_derivative;
+	float control;
+
+	state->error_integrated += error * delta_t;
+	error_derivative = (error - state->error_previous) / delta_t;
+	control = error * proportional_gain + error_integrated * integral_gain + error_derivative * derivative_gain;
+	state->error_previous = error;
+
+	return control;
+}
+*/
+

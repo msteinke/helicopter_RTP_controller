@@ -1,0 +1,566 @@
+//*****************************************************************************
+//
+// music1.c - Example program for ENCE361 - intro to interrupts.
+//          - Also used in preparation for ENCE463 Project #1 2013.
+//
+//  P.J. Bones	UCECE
+//  Last modified:  26.6.2013
+//*****************************************************************************
+
+//*****************************************************************************
+//
+//! Simple interrupt driven program:
+//!   samples with ADC0 (Pin 62 on board header)
+//!   reference high voltage on PF7 (Pin 29)
+//!  Based on 'convertV1.c'
+//!
+//*****************************************************************************
+
+/*
+// API Peripheral Modules
+#include "inc/hw_memmap.h"
+#include "inc/hw_types.h"
+#include "inc/hw_ints.h"
+#include "driverlib/adc.h"
+#include "driverlib/pwm.h"
+#include "driverlib/gpio.h"
+#include "driverlib/sysctl.h"
+#include "driverlib/systick.h"
+#include "driverlib/interrupt.h"
+#include "driverlib/debug.h"
+#include "driverlib/timer.h"
+#include "drivers/rit128x96x4.h"
+
+// C Modules
+#include <stdio.h>
+
+// Program specific modules
+#include "circBuf.h"
+#include "button.h"
+#include "heliDisplay.h"
+#include "mdisplay.h"
+//#include "decoder.h"
+
+
+
+
+//*****************************************************************************
+// Constants
+//*****************************************************************************
+
+#define PERIOD_CIRBUFF_SIZE 5
+
+#define SYSTICK_RATE 100000	//Real Time clock tick rate
+
+#define BUTTON_POLL_RATE 1000
+
+
+
+#define DISPLAY_REFRESH_RATE 5
+
+#define BUTTON_PINS  GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7
+
+
+
+//*****************************************************************************
+// Globals
+//*****************************************************************************
+
+//static circBuf_t g_inBuffer;		// Buffer of size BUF_SIZE integers (sample values)
+static volatile unsigned long long g_ulSampCnt;	// Counter for the interrupts
+static volatile unsigned long long g_ulRTCTicks; // Ticks since program initialization
+static volatile unsigned long g_ulButtonPolls; // Counts button polling events
+
+// Global circular buffer for storing period times
+//static circBuf_t g_cBPeriodTimes;
+
+// Global for holding decoder state, to be moved to decoder module
+//	NOT NAMED USING THE STANDARD CONVENTION INTENTIONALLY
+static volatile unsigned char decoderStateLast;
+// Global for encoder heading (in encoder clicks not degrees)
+static volatile unsigned short g_uiYaw_clicks;
+
+// Global for storing period, used by the pin interupt handler
+
+// Global for storing state of portG 												//DEBUG VARIABLE, REMOVE
+static volatile unsigned short g_usPortG;
+
+// Global button instance
+static button_t g_upButton;
+
+
+
+//*****************************************************************************
+//
+// Main module prototypes
+// (For functions used by interrupt handlers)
+//*****************************************************************************
+
+unsigned long long RTCGet(void);
+
+//*****************************************************************************
+//
+// Interrupt handlers
+//
+//*****************************************************************************
+
+// Systick
+void
+SysTickIntHandler(void)
+{
+	// Increment real time clock regester
+	g_ulRTCTicks++;
+
+	g_usPortG = GPIOPinRead(GPIO_PORTG_BASE, BUTTON_PINS);
+
+	buttonUpdate(&g_upButton, g_usPortG);
+}
+*/
+
+
+// mechanics of this function to be moved to a decoder module
+// and ISR to call module functions
+/*void
+decoderISR(void)	// consider calling this portF_ISR?
+{
+	GPIOPinIntClear(GPIO_PORTF_BASE, GPIO_PIN_5 | GPIO_PIN_7);
+
+	unsigned char pinStates = GPIOPinRead(GPIO_PORTF_BASE, GPIO_PIN_5 | GPIO_PIN_7);
+
+	// this can be tided up to use less temporary variables at some point before
+	// we submit our code
+
+	unsigned char A = pinStates & GPIO_PIN_5;
+	unsigned char B = pinStates & GPIO_PIN_7;
+	unsigned char A_changed = A == decoderStateLast & GPIO_PIN_5;
+	unsigned char B_changed = B == decoderStateLast & GPIO_PIN_7;
+
+	// Exception
+	if (A_changed && B_changed)
+		while(1){} //throw a wobbly
+
+	// Theory behind the following code:
+	// http://www.rocketnumbernine.com/2010/03/06/decoding-a-rotary-encoder
+	if (A==B ^ A_changed)
+	{
+		g_uiYaw_clicks++;
+	}
+	else
+		g_uiYaw_clicks--;
+
+	decoderStateLast = pinStates;
+}*/
+
+
+//*****************************************************************************
+// Initialization functions
+//*****************************************************************************
+/*
+void
+initClock (void)
+{
+  //
+  // Set the clock rate. From Section 19.1 in stellaris_peripheral_lib_UG.doc:
+  //  "In order to use the ADC, the PLL must be used; the PLL output will be 
+  //  used to create the clock required by the ADC." ADC rate = 8 MHz / 10.
+  SysCtlClockSet(SYSCTL_SYSDIV_10 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN |
+                   SYSCTL_XTAL_8MHZ);
+  //
+  // Set up the period for the SysTick timer.  The SysTick timer period is
+  // set as a function of the system clock.
+  SysTickPeriodSet(SysCtlClockGet() / SYSTICK_RATE);
+  //SysTickPeriodSet((SysTickPeriodGet()/4294967296) / (SYSTICK_RATE));
+
+  //
+  // Reset real time clock
+  g_ulRTCTicks = 0;
+  //
+  // Register the interrupt handler
+  SysTickIntRegister(SysTickIntHandler);
+  //
+  // Enable interrupt and device
+  SysTickIntEnable();
+  SysTickEnable();
+}
+
+
+//  CONFIGURE BUTTON PINS AND SET UP INTERRUPTS FOR DEBOUNCING
+
+void
+initButtonPins (void)
+{	
+    //
+    // Enable and configure the port and pins used for output with 8 mA
+    SysCtlPeripheralEnable (SYSCTL_PERIPH_GPIOG);
+
+    // Initialize button pins
+    GPIOPinTypeGPIOInput (GPIO_PORTG_BASE,  GPIO_PIN_3 | GPIO_PIN_4 |
+    		GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7 );
+
+    // Enable internal pullups on button pins
+    GPIOPadConfigSet(GPIO_PORTG_BASE,  GPIO_PIN_3 | GPIO_PIN_4 |
+    		GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7, GPIO_STRENGTH_8MA,
+                     GPIO_PIN_TYPE_STD_WPU);
+
+}*/
+
+
+
+
+/*decoder_pins_init (void)
+{
+	//Enable GPIO module for decoder
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+
+	// setup decoder input pins
+	GPIODirModeSet(GPIO_PORTF_BASE, GPIO_PIN_5 | GPIO_PIN_7, GPIO_DIR_MODE_IN);
+
+	// disable internal pullups on decoder pins
+	GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_5 | GPIO_PIN_7 , GPIO_STRENGTH_2MA,
+					 GPIO_PIN_TYPE_STD);
+
+	//GPIOIntTypeSet(GPIO_PORTG_BASE, GPIO_PIN_7, GPIO_LOW_LEVEL);
+	GPIOIntTypeSet(GPIO_PORTF_BASE, GPIO_PIN_5 | GPIO_PIN_7 , GPIO_BOTH_EDGES);
+
+	GPIOPortIntRegister(GPIO_PORTF_BASE, decoderISR);
+
+	IntPrioritySet(INT_GPIOG, 0);
+
+	GPIOPinIntEnable(GPIO_PORTF_BASE, GPIO_PIN_5 | GPIO_PIN_7);
+}*/
+
+
+
+
+//*****************************************************************************
+//
+// Main module functions
+//
+//*****************************************************************************
+/*
+// Returns number of Systick interrupts
+unsigned long long RTCGet(void)
+{
+	IntMasterDisable();
+	unsigned long ticks = g_ulRTCTicks;
+	IntMasterEnable();
+	return ticks;
+}
+
+// Returns uS since program startup
+unsigned long long RTCGetuS(void)
+{
+	unsigned long long ticks = RTCGet();
+
+	// !! CONVERT TICKS INTO uS !!
+
+	return ticks;
+}
+
+
+
+// Calls display module functions
+void updateDisplay(void)
+{
+	//displayClear();
+
+	displayClock(RTCGet() / SYSTICK_RATE);
+
+	// DISPLAY YAW INFORMATION
+}
+
+
+
+
+
+
+//*****************************************************************************
+//
+// Debug main loop and associated functions
+//
+//*****************************************************************************
+
+
+
+// Debugging display function
+void updateDisplayDebug(unsigned short button_pushes)
+{
+	//displayClear();
+	displayClock(RTCGet() / SYSTICK_RATE);
+
+	char string[100];
+
+    sprintf(string, "%u", button_pushes);
+    RIT128x96x4StringDraw(string, 5, 35, 15);
+}
+
+
+void mainLoopDebug(void)
+{
+
+	//buttonInit(&g_bUp, GPIO_PORTG_BASE, GPIO_PIN_3);
+
+	unsigned short button_push_count = 0;
+
+	unsigned short ticks = 0;
+
+	while(1)
+	{
+		IntMasterDisable();
+		ticks = g_ulRTCTicks;
+		if(buttonPushed(&g_upButton))
+			button_push_count++;
+		IntMasterEnable();
+
+		if (ticks % (SYSTICK_RATE/5) == 0)
+		{
+			updateDisplayDebug( buttonDown(&g_upButton) );
+		}
+
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////    MAIN    ///////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////
+
+int
+main(void)
+{
+	IntMasterDisable();
+
+	//unsigned int i;
+	//unsigned short pinValue;
+
+
+	///unsigned long ticks;
+
+	//unsigned long time;
+
+	//float period;
+	//unsigned long periods[PERIOD_CIRBUFF_SIZE] = {0};
+	//unsigned long periodSum;
+
+	// Initialise global ringbuffer
+	//initCircBuf(&g_cBPeriodTimes, PERIOD_CIRBUFF_SIZE);
+	//circBuf_t circbuffDEBUG = g_cBPeriodTimes; //Pointer to ringbuffer for debug
+
+
+
+	
+	initClock ();
+	initButtonPins();
+	buttonInit(&g_upButton, GPIO_PORTG_BASE, GPIO_PIN_3);
+	//decoder_pins_init ();
+
+	// intialise the OLED display
+    RIT128x96x4Init(10000000);
+
+    //
+    // Enable interrupts to the processor.
+    IntMasterEnable();
+
+
+
+	while (1)
+	{
+		//mainLoopDebug();				//DEBUG LOOP FUNCTION
+
+		//IntMasterDisable();
+		//ticks = g_ulRTCTicks;
+		//IntMasterDisable();
+
+		//updateDisplay();
+		buttonUpdate(&g_upButton, g_usPortG);
+		mdisplayText("PG3:          %.4u", GPIOPinRead(GPIO_PORTG_BASE, GPIO_PIN_3), 5);
+		mdisplayText("g_usPortG:    %.4u", g_usPortG, 6);
+		mdisplayText("buttonPushed: %.4u", buttonPushed(&g_upButton), 7);
+
+	}
+}
+*/
+
+
+
+//*****************************************************************************
+//
+// butV2Test.c - Test program for Version 2 of button support
+//
+// Author:  P.J. Bones	UCECE
+// Last modified:	31.3.2012  14:30
+//*****************************************************************************
+
+#include "inc/hw_memmap.h"
+#include "inc/hw_types.h"
+#include "driverlib/pwm.h"
+#include "driverlib/gpio.h"
+#include "driverlib/sysctl.h"
+#include "driverlib/systick.h"
+#include "utils/uartstdio.h"
+#include "driverlib/debug.h"
+#include "drivers/rit128x96x4.h"
+#include "stdio.h"
+#include "driverlib/interrupt.h"
+//#include "buttonSet.h"
+#include "mbutton.h"
+#include "mdisplay.h"
+
+//*****************************************************************************
+// Constants
+//*****************************************************************************
+#define TICK_RATE_HZ 1000
+
+//*****************************************************************************
+// Globals
+//*****************************************************************************
+unsigned long g_ulCount;	// Count of pushes detected
+static button_t g_upButton;
+
+//*****************************************************************************
+//
+// The interrupt handler for the for SysTick interrupt.
+//
+//*****************************************************************************
+void
+SysTickIntHandler(void)
+{
+    //
+    // Poll the buttons
+    //
+    updateButton();
+}
+
+//*****************************************************************************
+// Initialisation functions clock, display
+//*****************************************************************************
+void
+initClock (void)
+{
+  //
+  // Set the clock rate. From Section 19.1 in stellaris_peripheral_lib_UG.doc:
+  //  "In order to use the ADC, the PLL must be used; the PLL output will be
+  //  used to create the clock required by the ADC." ADC rate = 8 MHz / 10.
+  SysCtlClockSet(SYSCTL_SYSDIV_10 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN |
+                   SYSCTL_XTAL_8MHZ);
+  //
+  // Set up the period for the SysTick timer.  The SysTick timer period is
+  // set as a function of the system clock.
+  SysTickPeriodSet(SysCtlClockGet() / TICK_RATE_HZ);
+  //
+  // Register the interrupt handler
+  SysTickIntRegister(SysTickIntHandler);
+  //
+  // Enable interrupt and device
+  SysTickIntEnable();
+  SysTickEnable();
+}
+
+void
+initDisplay (void)
+{
+  // intialise the OLED display
+  RIT128x96x4Init(1000000);
+}
+
+//*****************************************************************************
+//
+// Function to display the last button pushed
+//
+//*****************************************************************************
+void
+displayBut (int butIndex, unsigned long ulCount)
+{
+   static char *butString[5] = {"UP", "DOWN", "LEFT", "RIGHT", "SELECT"};
+   char string[10];
+
+   RIT128x96x4StringDraw("Last button push was", 5, 24, 15);
+   RIT128x96x4StringDraw("      ", 20, 34, 15);  // To clear previous display
+   RIT128x96x4StringDraw (butString[butIndex], 20, 34, 15);
+   RIT128x96x4StringDraw(string, 5, 44, 15);
+   sprintf(string, "Count = %d", ulCount);
+   RIT128x96x4StringDraw(string, 5, 44, 15);
+}
+
+void displayIState(button_t* button, unsigned short line)
+{
+	if (button->iState == BUT_INACTIVE)
+	{
+		mdisplayText("iState = BUT_INACTIVE  ", 0, line);
+	}
+	else if (button->iState == BUT_OUT)
+	{
+		mdisplayText("iState = BUT_OUT       ", 0, line);
+	}
+	else if (button->iState == BUT_IN)
+	{
+		mdisplayText("iState = BUT_IN        ", 0, line);
+	}
+	else if (button->iState == BUT_PUSHED)
+	{
+		mdisplayText("iState = BUT_PUSHED    ", 0, line);
+	}
+	else
+	{
+		mdisplayText("iState ERROR: %.4u     ", button->iState, line);
+	}
+}
+
+
+int
+main(void)
+{
+	//unsigned int i;
+	IntMasterDisable();
+
+	initClock();
+	//initDisplay();
+	mdisplayInit(10000000);
+	//initButSet (LEFT_B | RIGHT_B | SELECT_B, TICK_RATE_HZ);
+
+	initButton(&g_upButton, GPIO_PORTG_BASE, GPIO_PIN_3);
+	//displayBut(1, g_ulCount);
+	//int state = g_upButton.iState;
+
+	//
+	// Enable interrupts to the processor.
+	IntMasterEnable();
+
+	while (1)
+	{
+		//state = g_upButton.iState;
+		//
+		// Background task: Check for button pushes and
+		//  display latest button pushed
+		if (checkButton(&g_upButton))
+		{
+			//displayBut(state, g_ulCount);
+			g_ulCount++;
+		}
+		mdisplayText("g_ulCount = %.4u", g_ulCount, 1);
+		displayIState(&g_upButton, 2);
+		mdisplayText("uiCnt =     %.4u", g_upButton.uiCnt, 3);
+		//mdisplayText("ulPort =    %.4u", g_upButton.ulPort, 4);
+		//mdisplayText("ucPin =     %.4u", g_upButton.ucPin, 5);
+		mdisplayText("PG =        %.4u", GPIOPinRead(g_upButton.ulPort, g_upButton.ucPin), 6);
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

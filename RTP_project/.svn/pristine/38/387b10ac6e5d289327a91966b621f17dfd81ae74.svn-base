@@ -1,0 +1,20 @@
+// *******************************************************
+//
+// mdisplay.h
+//
+//  Support for buttons with integrated debouncing
+//  Stellaris LM3S1968 EVK
+//
+// *******************************************************
+
+#ifndef MDISPLAY_H_
+#define MDSIPLAY_H_
+
+
+
+// PROTOTYPES
+void mdisplayInit(unsigned long ulFrequency);
+void mdisplayClear(void);
+void mdisplayText(char inputString[20], int data, unsigned short line);
+
+#endif /*MDISPLAY_H_*/

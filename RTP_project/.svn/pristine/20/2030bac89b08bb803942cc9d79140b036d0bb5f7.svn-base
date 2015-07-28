@@ -1,0 +1,36 @@
+
+// *******************************************************
+//
+// decoder.h
+//
+// Support for decoding a rotary encoder module
+//  Stellaris LM3S1968 EVK
+//
+// *******************************************************
+
+#ifndef DECODER_H_
+#define DECODER_H_
+
+// INCLUDES
+#include "inc/hw_types.h"
+
+// DECODER STRUCTURE
+typedef struct {
+	//unsigned char decoderPins[2];
+	unsigned char PinStates[2];
+
+	// number of clicks from decoder
+	// click being a detection of a move onto, or off, a slot
+	// 112 slots -> 224 clicks per rotation
+
+	// signed short yaw_clicks = 0;
+
+} decoder_t;
+
+
+
+// PROTOTYPES
+
+#endif /*DECODER_H_*/
+
+

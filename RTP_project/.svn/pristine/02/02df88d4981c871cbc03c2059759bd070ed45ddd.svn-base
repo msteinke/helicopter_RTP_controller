@@ -1,0 +1,191 @@
+// *******************************************************
+//
+// mRTC.c
+//
+// Functions to set-up a real time clock using SysTick.
+// Supports the periodic scheduling of foreground tasks
+//  Stellaris LM3S1968 EVK
+//
+// *******************************************************
+
+#include "mRTC.h"
+
+static volatile unsigned short g_uiRTCRateHz;
+static volatile unsigned long long g_ullRTCTicks; // Ticks since program initialization
+static volatile myFuncDef g_RTCTaskList[SYSTICK_TASK_LIST_SIZE]; // Array of pointers to functions
+static volatile unsigned short g_RTCTaskPeriodList[SYSTICK_TASK_LIST_SIZE]; // Array of task periods
+static volatile unsigned short g_RTCNumTasks; // Array of pointers to functions
+
+
+
+
+/* Interrupt service routine that increments the global clock counter */
+void
+SysTickISR(void)
+{
+	short i = 0;
+
+	// Increment real time clock counter
+	g_ullRTCTicks++;
+
+	// execute other tasks.
+	for(i = 0; i < g_RTCNumTasks; i++)
+	{
+		//If periodic task is due, complete the task
+		//if (g_ullRTCTicks % g_RTCTaskPeriodList[i] == 0)
+			(*g_RTCTaskList[i])();
+	}
+}
+
+/* Sets up the clock.
+ *
+ * \return none*/
+void
+clockInit(void)
+{
+	//
+	// Set the clock rate. From Section 19.1 in stellaris_peripheral_lib_UG.doc:
+	//  "In order to use the ADC, the PLL must be used; the PLL output will be
+	//  used to create the clock required by the ADC." ADC rate = 8 MHz / 10.
+
+	SysCtlClockSet(SYSCTL_SYSDIV_10 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN |
+	                   SYSCTL_XTAL_8MHZ);
+}
+
+// **********************************************
+// Initialises the real-time clock.
+void
+mRTCInit(unsigned short rtc_rate_given)
+{
+	g_uiRTCRateHz = rtc_rate_given;
+	clockInit();
+	SysTickPeriodSet(SysCtlClockGet() / g_uiRTCRateHz);
+	//SysTickPeriodSet((SysTickPeriodGet()/4294967296) / (SYSTICK_RATE));
+
+	//
+	// Reset real time clock
+	g_ullRTCTicks = 0;
+
+	//
+	// Register the interrupt handler
+	SysTickIntRegister(SysTickISR);
+	//
+	// Enable interrupt and device
+	SysTickIntEnable();
+	SysTickEnable();
+
+	// clear the systick() tasklist
+	short i = 0;
+	g_RTCNumTasks = 0;
+	for (i = 0; i < SYSTICK_TASK_LIST_SIZE; i++)
+	{
+		g_RTCTaskList[i] = 0;
+	}
+}
+
+/* Resets the systick counter to a desired time.
+ * Becareful of the systick rate!
+ * \param ullTime
+ * \return none*/
+void
+mRTCSet(unsigned long long ullTime)
+{
+	IntMasterDisable();
+	g_ullRTCTicks = ullTime;
+	IntMasterEnable();
+}
+
+/* Returns the raw RTC time.
+ *
+ * \return number of Systick interrupts*/
+unsigned long long
+mRTCGetRaw(void)
+{
+	IntMasterDisable();
+	unsigned long long ticks = g_ullRTCTicks;
+	IntMasterEnable();
+	return ticks;
+}
+
+/* Returns the raw RTC time in seconds
+ *
+ * \return number of Systick interrupts*/
+unsigned long long
+mRTCGetSeconds(void)
+{
+	unsigned long long ticks = (unsigned long)(
+			mRTCGetRaw()/g_uiRTCRateHz);
+	return ticks;
+}
+
+/* Returns the raw RTC time in miliseconds
+ *
+ * \return number of Systick interrupts*/
+unsigned long long
+mRTCGetMilliSeconds(void)
+{
+	unsigned long long ticks = (unsigned long)(
+			1000*mRTCGetRaw()/g_uiRTCRateHz );
+	return ticks;
+}
+
+// Commented out as systick does not have frequency
+
+/* Returns the raw RTC time in microseconds
+ *
+ * \return number of Systick interrupts*/\
+ /*
+unsigned long long
+mRTCGetMicroSeconds(void)
+{
+	//unsigned long long ticks = (unsigned long)(
+	//		(float)mRTCGetRaw()/(g_uiRTCRateHz/1000000.0) );
+	unsigned long long ticks = (1000000*mRTCGetRaw()/g_uiRTCRateHz );
+	return ticks;
+}
+*/
+
+
+
+
+// ***********************************************
+// adds tasks for execution in systick interupt handler
+short mRTCAddTask(myFuncDef func, unsigned short rate)
+{
+	if (g_RTCNumTasks < SYSTICK_TASK_LIST_SIZE)
+	{
+		g_RTCTaskList[g_RTCNumTasks] = func;
+		g_RTCTaskPeriodList[g_RTCNumTasks] = g_uiRTCRateHz / rate;
+		g_RTCNumTasks++;
+		return 1;
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+// ***********************************************
+// removes the top task from the task stack.
+short mRTCRemoveTask()
+{
+	if (g_RTCNumTasks > 0)
+	{
+		g_RTCNumTasks--;
+		g_RTCTaskList[g_RTCNumTasks] = 0;
+		return 1;
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,28 @@
+#ifndef DISPLAY_H_
+#define DISPLAY_H_
+
+// *******************************************************
+//
+// display.h
+// hosts non-generic display functions
+//
+// *******************************************************
+
+#include "inc/hw_types.h"
+
+// Clears display
+//void displayClear(void);
+
+// Displays real time clock information
+void displayClock (unsigned long long ullTime);
+
+// Display number of pin triggered interupts
+//		debug related function
+void displaySMPLS(void);
+
+// used for Milstone 1
+// void displayPeriod (float period);
+
+
+
+#endif /*DISPLAY_H_*/

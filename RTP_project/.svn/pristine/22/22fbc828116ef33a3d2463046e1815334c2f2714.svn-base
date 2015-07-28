@@ -1,0 +1,157 @@
+// *******************************************************
+//
+// mbutton.c
+//
+// Support for buttons
+//  Stellaris LM3S1968 EVK
+//
+// *******************************************************
+
+#include "mbutton.h"
+#include "inc/hw_memmap.h"
+#include "inc/hw_types.h"
+#include "driverlib/gpio.h"
+#include "driverlib/sysctl.h"
+
+/*
+typedef struct {
+   int iState;			// Value from enum but_state
+   unsigned int uiCnt;	// Counter for debouncing delay
+   unsigned long ulPort;	// Base argument for GPIO port
+   unsigned char ucPin;	// Pin mask for GPIO port for button
+} button_t;
+ */
+
+static button_t* buttonPointer;
+
+void initButton (button_t* button, unsigned long ulPort, unsigned char ucPin)
+{
+	//
+	if (ulPort == GPIO_PORTG_BASE)
+	{
+		SysCtlPeripheralEnable (SYSCTL_PERIPH_GPIOG);
+	}
+	else if (ulPort == GPIO_PORTB_BASE)
+	{
+		SysCtlPeripheralEnable (SYSCTL_PERIPH_GPIOB);
+	}
+	else if (ulPort == GPIO_PORTF_BASE)
+	{
+		SysCtlPeripheralEnable (SYSCTL_PERIPH_GPIOF);
+	}
+	else if (ulPort == GPIO_PORTH_BASE)
+	{
+		SysCtlPeripheralEnable (SYSCTL_PERIPH_GPIOH);
+	}
+
+    // Initialize button pins
+    GPIOPinTypeGPIOInput (ulPort, ucPin);
+
+    // Enable internal pullups on button pins
+    GPIOPadConfigSet(ulPort,  ucPin, GPIO_STRENGTH_8MA,
+                     GPIO_PIN_TYPE_STD_WPU);
+
+    // Set the button_t values
+    button->iState = BUT_OUT; // enable button
+    button->uiCnt = 0;
+    button->ulPort = ulPort;
+    button->ucPin = ucPin;
+
+    buttonPointer = button;
+}
+
+
+// *******************************************************
+// updateButtons: Function designed to be called from the SysTick
+//  interrupt handler.  It has no return type or argument list. A
+//  call to initButSet() is required before the first call to this.
+//void updateButton (button_t* button)
+void updateButton (void)
+{
+
+	button_t* button = buttonPointer;
+
+
+	// Read the pin's digital state
+	long rawPinData = GPIOPinRead(button->ulPort, button->ucPin);
+
+	// transfer the pin read to a more meaningful variable
+	int pinState = 0;
+	if (rawPinData) // do nothing when button is not pressed
+	{
+		pinState = BUT_OUT;
+	}
+	else
+	{
+		pinState = BUT_IN;
+	}
+
+	// Don't do anything until pushed button has
+	// been serviced by checkBut().
+	if ((button->iState == BUT_PUSHED) || (button->iState == BUT_INACTIVE))
+	{
+		// Do nothing
+	}
+	else
+	{
+		// check for a button press.
+		if (button->uiCnt >= BUT_DETECT_MS)
+		{
+			//
+			button->iState = BUT_PUSHED;
+			button->uiCnt = 0;
+		}
+		else if ((button->iState == pinState) && (pinState == BUT_IN))
+		{
+			//
+			button->iState = BUT_OUT;
+			button->uiCnt += 1;
+		}
+		else
+		{
+			button->uiCnt = 0;
+			button->iState = pinState;
+		}
+	}
+}
+
+
+// *******************************************************
+// checkBut: Checks the specified individual button and returns true
+//  (1) if the button is active and has state BUT_PUSHED (newly pushed)
+//  and modifies state to BUT_IN. Returns false (0) otherwise.
+unsigned char checkButton (button_t *button)
+{
+	//
+	if (button->iState == BUT_PUSHED)
+	{
+		button->iState = BUT_OUT; // modify state In or OUT??
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+// *******************************************************
+// enableBut: Alters the state of the specified button to BUT_OUT,
+//  if it was previously BUT_INACTIVE, otherwise makes no change.
+void enableBut (button_t *button)
+{
+	//
+	if (button->iState == BUT_INACTIVE)
+	{
+		button->iState = BUT_OUT;
+	}
+}
+
+// *******************************************************
+// disableBut: Alters the state of the specified button to
+//  BUT_INACTIVE.
+void disableBut (button_t *button)
+{
+    button->iState = BUT_INACTIVE;
+}
+
+

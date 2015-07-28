@@ -1,0 +1,116 @@
+//*****************************************************************************
+//
+// pwm2chan.c - Example code which generates two PWM signals on two pins.
+//
+// Author:  P.J. Bones	UCECE
+// Last modified:	17.3.2013
+//
+//*****************************************************************************
+// Based on trigGenTest.c 
+//*****************************************************************************
+
+#include "inc/hw_memmap.h"
+#include "inc/hw_types.h"
+#include "driverlib/debug.h"
+#include "driverlib/gpio.h"
+#include "driverlib/pwm.h"
+#include "driverlib/sysctl.h"
+
+//*****************************************************************************
+// Generates PWM signal: 100 usec pulses @ 660 Hz on PD1/PWM1: Pin 53
+//    (6.6 % duty cycle) 100 usec = 1 / PWM1_100USEC
+// Generates PWM signal: 200 usec @ 333 Hz on PF3/PWM5:  Pin 23
+//    (6.67 % duty cycle) 200 usec = 1 / PWM5_200USEC 
+// Note that PWM Generator 0 drives output 'PWM1' and PWM Generator 2
+// drives output 'PWM5' (Ref LMS1968 datasheet)
+//
+//*****************************************************************************
+
+// Constants
+#define PWM1_RATE_HZ 660
+#define PWM1_100USEC 10000
+#define PWM5_RATE_HZ 333
+#define PWM5_200USEC 5000
+
+//*****************************************************************************
+//
+// Initialise the clock
+//
+//*****************************************************************************
+void
+initClock (void)
+{
+   //
+   // Set the clock rate to 20 MHz
+   SysCtlClockSet (SYSCTL_SYSDIV_10 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN |
+                   SYSCTL_XTAL_8MHZ);	
+}
+
+//*****************************************************************************
+//
+// Initialise the GPIO (Ports D and F)
+//
+//*****************************************************************************
+void
+initPins (void)
+{
+    SysCtlPeripheralEnable (SYSCTL_PERIPH_GPIOD);
+    SysCtlPeripheralEnable (SYSCTL_PERIPH_GPIOF);
+    //
+    // Set GPIO D1 and GPIO F3 as PWM pins.
+    //
+    GPIOPinTypePWM (GPIO_PORTD_BASE, GPIO_PIN_1);
+    GPIOPinTypePWM (GPIO_PORTF_BASE, GPIO_PIN_3);
+}
+
+//*****************************************************************************
+//
+// Initialise the PWM generators (PWM1 and PWM5) 
+//
+//*****************************************************************************
+void
+initPWMchans (void)
+{
+    SysCtlPeripheralEnable (SYSCTL_PERIPH_PWM);
+    //
+    // Compute the PWM period based on the system clock. 
+    //  PWM Gen 0 = 660 Hz, 100 usec pulses on PWM1
+    //
+    PWMGenConfigure (PWM_BASE, PWM_GEN_0,
+                     PWM_GEN_MODE_UP_DOWN | PWM_GEN_MODE_NO_SYNC);
+    PWMGenPeriodSet (PWM_BASE, PWM_GEN_0, SysCtlClockGet () / PWM1_RATE_HZ);
+    PWMPulseWidthSet (PWM_BASE, PWM_OUT_1, SysCtlClockGet () / PWM1_100USEC);
+
+    //  PWM Gen 2 = 330 Hz, 200 usec pulses on PWM5
+    //
+    PWMGenConfigure (PWM_BASE, PWM_GEN_2,
+                     PWM_GEN_MODE_UP_DOWN | PWM_GEN_MODE_NO_SYNC);
+    PWMGenPeriodSet (PWM_BASE, PWM_GEN_2, SysCtlClockGet () / PWM5_RATE_HZ);
+    PWMPulseWidthSet (PWM_BASE, PWM_OUT_5, SysCtlClockGet () / PWM5_200USEC);
+    //
+    // Enable the PWM output signals.
+    //
+    PWMOutputState (PWM_BASE, PWM_OUT_1_BIT, true);
+    PWMOutputState (PWM_BASE, PWM_OUT_5_BIT, true);
+    //
+    // Enable the PWM generators.
+    //
+    PWMGenEnable (PWM_BASE, PWM_GEN_0);
+    PWMGenEnable (PWM_BASE, PWM_GEN_2);
+}
+
+
+int
+main (void)
+{
+    initClock ();
+    initPins ();
+    initPWMchans ();
+
+    //
+    // Loop forever while the PWM signals are generated.
+    //
+    while (1)
+    {
+    }
+}

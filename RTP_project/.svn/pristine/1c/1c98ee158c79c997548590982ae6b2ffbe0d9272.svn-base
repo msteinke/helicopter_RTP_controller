@@ -1,0 +1,243 @@
+//*****************************************************************************
+//
+// music1.c - Example program for ENCE361 - intro to interrupts.
+//          - Also used in preparation for ENCE463 Project #1 2013.
+//
+//  P.J. Bones	UCECE
+//  Last modified:  26.6.2013
+//*****************************************************************************
+
+//*****************************************************************************
+//
+//! Simple interrupt driven program:
+//!   samples with ADC0 (Pin 62 on board header)
+//!   reference high voltage on PF7 (Pin 29)
+//!  Based on 'convertV1.c'
+//!
+//*****************************************************************************
+
+
+// API Peripheral Modules
+#include "inc/hw_memmap.h"
+#include "inc/hw_types.h"
+#include "inc/hw_ints.h"
+#include "driverlib/adc.h"
+#include "driverlib/pwm.h"
+#include "driverlib/gpio.h"
+#include "driverlib/sysctl.h"
+#include "driverlib/systick.h"
+#include "driverlib/interrupt.h"
+#include "driverlib/debug.h"
+#include "driverlib/timer.h"
+#include "drivers/rit128x96x4.h"
+//#include "startup_ccs.c"
+
+// C Modules
+#include <stdio.h>
+
+// Program specific modules
+//#include "circBuf.h"
+#include "mbutton.h"
+#include "heliDisplay.h"
+#include "mdisplay.h"
+#include "yaw.h"
+#include "PID.h"
+#include "mPWM.h"
+#include "height.h"
+
+
+
+
+//*****************************************************************************
+// Constants
+//*****************************************************************************
+
+//#define PERIOD_CIRBUFF_SIZE 5
+
+
+//*****************************************************************************
+// Globals
+//*****************************************************************************
+
+// Global circular buffer for storing period times
+//static circBuf_t g_cBPeriodTimes;
+
+//*****************************************************************************
+// Main module prototypes
+//*****************************************************************************
+
+float getYawError(void)
+{
+	static volatile float yawDesired;
+
+	// reset the yaw zero point
+	if (mButtonCheck(SELECT))
+	{
+		yawSetClicks(0);
+	}
+
+	// change the desired height
+	if (mButtonCheck(LEFT))
+	{
+		yawDesired -= 15;
+	}
+	else if (mButtonCheck(RIGHT))
+	{
+		yawDesired += 15;
+	}
+
+	return (float)yawGetAngle() - yawDesired;
+}
+
+float getHeightError(void)
+{
+	static volatile float heightDesired;
+
+	heightSample(); // take an ADC reading
+	float currentHeight = 0;
+	currentHeight = heightGet();
+
+	//
+	// change the desired height
+	if (mButtonCheck(DOWN) && currentHeight > 0)
+	{
+		heightDesired -= 100;
+	}
+	else if (mButtonCheck(UP))
+	{
+		heightDesired += 100;
+	}
+
+	if ((currentHeight > 10000) || (currentHeight < -10000))
+	{
+		mDisplayLine("ShitsGetHeight", 0, 8, 15);
+	}
+
+	return heightDesired - (float)currentHeight;
+}
+
+
+void displayStuff(int yawDesired, int yawControl, int yawError, int currentHeight, int heightControl, int heightDesired, int heightError)
+{
+	mDisplayLine("Yaw angle  = %.4d' ", (int)yawGetAngle(), 0, 15);
+	mDisplayLine("yawControl = %.4d' ", yawControl, 1, 3);
+	mDisplayLine("yawDesired  = %.4d' ", yawDesired, 2, 3);
+	mDisplayLine("yawError   = %.4d' ", yawError, 3, 3);
+	mDisplayLine("height    = %.4d   ", currentHeight, 4, 15);
+	mDisplayLine("hControl  = %.4d   ", heightControl, 5, 15);
+	mDisplayLine("hDesired  = %.4d  ", heightDesired, 6, 15);
+	mDisplayLine("hError    = %.4d   ", heightError, 7, 15);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////    MAIN    ///////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+int main(void)
+{
+	IntMasterDisable();
+
+	mButtonInit(SELECT);
+	mButtonInit(LEFT);
+	mButtonInit(RIGHT);
+	mButtonInit(UP);
+	mButtonInit(DOWN);
+
+	yawInit(); // yaw monitor
+	pid_t yawPID;
+	PIDInit(&yawPID);
+	PIDSet(&yawPID, 0.5, 0.1, 0.0); // set PID constants
+    float yawControl = 0;
+    float yawError = 0;
+    //float yawDesired = 0; // in degrees
+
+	heightInit();
+	//unsigned long currentHeight = 0;
+	pid_t heightPID;
+	PIDInit(&heightPID);
+	PIDSet(&heightPID, 0.1, 0.1, 0.0); // set PID constants
+    float heightControl = 0;
+    float heightError = 0;
+    //float heightDesired = 0; // in degrees
+
+	float delta_t = 0.5; // 1 ms???? smaller means slower response
+
+	mPWMInit();
+	mPWMEnable(PWM4, 1); // tail rotor, yaw control.
+	mPWMEnable(PWM1, 1); // main rotor, height control.
+
+    mDisplayInit(1000000);
+
+
+    //
+    // Enable interrupts to the processor.
+    IntMasterEnable();
+
+	while (1)
+	{
+		//mDisplayClear();
+
+		// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ YAW PID STUFF ~~~~
+
+		yawError = getYawError();
+		yawControl = PIDUpdate(&yawPID, yawError, delta_t);
+
+		//
+		// make sure the PWM doesn't go over 98% or less than 2%.
+		// this prevents integrator wind-up.
+		if ((yawControl >= 98.0) && (yawError >= 0.0))
+		{
+			yawControl = 98.0;
+			PIDDisable(&yawPID);
+		}
+		else if ((yawControl <= 2.0) && (yawError <= 0.0))
+		{
+			yawControl = 2.0;
+			PIDDisable(&yawPID);
+		}
+		else
+		{
+			PIDEnable(&yawPID);
+		}
+
+		mPWMSet(PWM4, (unsigned short)yawControl);
+
+
+
+
+		//
+		// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ HEIGHT PID STUFF ~~~~~
+		//
+
+		heightError = getHeightError();
+		heightControl = PIDUpdate(&heightPID, heightError, delta_t);
+
+		//
+		// make sure the PWM doesn't go over 98% or less than 2%.
+		// this prevents integrator wind-up.
+		if ((heightControl >= 98.0) && (heightError >= 0.0))
+		{
+			heightControl = 98.0;
+			PIDDisable(&heightPID);
+		}
+		else if ((heightControl <= 2.0) && (heightError <= 0.0))
+		{
+			heightControl = 2.0;
+			PIDDisable(&heightPID);
+		}
+		else
+		{
+			PIDEnable(&heightPID);
+		}
+
+		mPWMSet(PWM1, (unsigned short)heightControl);
+
+		if ((heightError > 10000) || (heightError < -10000))
+		{
+			mDisplayLine("ShitsMain", 0, 8, 15);
+		}
+		displayStuff(0, (int)yawControl, (int)yawError, 0/*(int)heightGet()*/, (int)heightControl, 0, (int)heightError);
+	}
+}
+
+
+

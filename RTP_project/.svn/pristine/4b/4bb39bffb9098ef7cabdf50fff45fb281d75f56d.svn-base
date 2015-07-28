@@ -1,0 +1,21 @@
+// *******************************************************
+//
+// mbutton.h
+//
+//  Support for buttons with integrated debouncing
+//  Stellaris LM3S1968 EVK
+//
+// *******************************************************
+
+#ifndef MBUTTON_H_
+#define MBUTTON_H_
+
+#include "drivers/rit128x96x4.h"
+#include <stdio.h>
+
+// PROTOTYPES
+void displayInit(unsigned long ulFrequency);
+void displayClear(void);
+void displayText(char inputString[20], int data, unsigned short line);
+
+#endif /*MBUTTON_H_*/

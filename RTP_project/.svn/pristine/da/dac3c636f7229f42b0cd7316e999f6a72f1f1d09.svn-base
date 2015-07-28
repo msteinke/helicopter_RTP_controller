@@ -1,0 +1,68 @@
+// *******************************************************
+//
+// button.c
+//
+// Support for buttons
+//  Stellaris LM3S1968 EVK
+//
+// *******************************************************
+
+#include "button.h"
+
+/* Initialise a GPIO pin for use as a button. Module supports button debouncing
+ * \param *button a button type
+ * \param ulPort GPIO port that the button is located on.
+ * \param ucPin  GPIO pin that the button uses on the GPIO port.
+ */
+void buttonInit(button_t *button, unsigned long ulPort, unsigned char ucPin)
+{
+	button->ucPin = ucPin;
+
+	button->ucState = 0;
+	button->ucPinState = 0;
+	button->ucSamePinStateCount = 0;
+}
+
+/* Takes the pre-read port value, as its likely multiple buttons will be updated
+ * at the same time. This way the port value is read once in the calling function
+  and passed to any subsequent calls
+ */
+void buttonUpdate(button_t *button, long portGRead)
+//void buttonInit(button_t *button, unsigned long ulPort, unsigned char ucPin)
+{
+	// State unchanged increment counter
+	if(button->ucPinState == portGRead & button->ucPin)
+	{
+		button->ucSamePinStateCount++;
+	}
+	// State changed, Reset counter and change state variable
+	else
+	{
+		button->ucSamePinStateCount = 0;
+	}
+	if (button->ucSamePinStateCount >= SWITCHOVER_THRESHOLD)
+	{
+		if (button->ucState == UP && button->ucPinState == 0)
+			button->ucState = PUSHED;
+		if (button->ucState != UP && button->ucPinState == 1)
+			button->ucState = UP;
+	}
+}
+
+unsigned char buttonPushed(button_t *button)
+{
+	if (button->ucState == PUSHED)
+	{
+		button->ucState = DOWN;
+		return 1;
+	}
+	else
+		return 0;
+}
+
+unsigned char buttonDown(button_t *button)
+{
+	return button->ucState != UP;
+}
+
+

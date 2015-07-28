@@ -1,0 +1,122 @@
+// *******************************************************
+//
+// mRTC.c
+//
+// Functions to set-up a real time clock using SysTick.
+//  Stellaris LM3S1968 EVK
+//
+// *******************************************************
+
+#include "mRTC.h"
+
+static volatile unsigned long long g_ullRTCTicks; // Ticks since program initialization
+
+
+/* Sets up the clock.
+ *
+ * \return none*/
+void
+clockInit(void)
+{
+	//
+	// Set the clock rate. From Section 19.1 in stellaris_peripheral_lib_UG.doc:
+	//  "In order to use the ADC, the PLL must be used; the PLL output will be
+	//  used to create the clock required by the ADC." ADC rate = 8 MHz / 10.
+	SysCtlClockSet(SYSCTL_SYSDIV_10 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN |
+	                   SYSCTL_XTAL_8MHZ);
+}
+
+/* Interrupt service routine that increments the global clock counter */
+void
+SysTickISR(void)
+{
+	// Increment real time clock counter
+	g_ullRTCTicks++;
+
+	//g_ucPortG = GPIOPinRead(GPIO_PORTG_BASE, GPIO_PIN_3 | GPIO_PIN_4 |
+    		//GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7);
+	//buttonUpdate(&g_bUp, g_ucPortG);
+}
+
+
+
+/* Returns the raw RTC time.
+ *
+ * \return number of Systick interrupts*/
+unsigned long long
+mRTCGetRaw(void)
+{
+	IntMasterDisable();
+	unsigned long long ticks = g_ullRTCTicks;
+	IntMasterEnable();
+	return ticks;
+}
+
+/* Returns the raw RTC time in seconds
+ *
+ * \return number of Systick interrupts*/
+unsigned long long
+mRTCGetSeconds(void)
+{
+	unsigned long long ticks = (unsigned long)(
+			mRTCGetRaw()/SYSTICK_RATE_HZ);
+	return ticks;
+}
+
+/* Returns the raw RTC time in miliseconds
+ *
+ * \return number of Systick interrupts*/
+unsigned long long
+mRTCGetMilliSeconds(void)
+{
+	unsigned long long ticks = (unsigned long)(
+			mRTCGetRaw()/(SYSTICK_RATE_HZ/1000) );
+	return ticks;
+}
+
+/* Returns the raw RTC time in microseconds
+ *
+ * \return number of Systick interrupts*/
+unsigned long long
+mRTCGetMicroSeconds(void)
+{
+	unsigned long long ticks = (unsigned long)(
+			(float)mRTCGetRaw()/(SYSTICK_RATE_HZ/1000000.0) );
+	return ticks;
+}
+
+/* Resets the systick counter to a desired time.
+ * Becareful of the systick rate!
+ * \param ullTime
+ * \return none*/
+void
+mRTCSet(unsigned long long ullTime)
+{
+	IntMasterDisable();
+	g_ullRTCTicks = ullTime;
+	IntMasterEnable();
+}
+
+/* Initialises the realtime clock.
+ *
+ * \return none*/
+void
+mRTCInit(void)
+{
+
+	clockInit();
+	SysTickPeriodSet(SysCtlClockGet() / SYSTICK_RATE_HZ);
+	//SysTickPeriodSet((SysTickPeriodGet()/4294967296) / (SYSTICK_RATE));
+
+	//
+	// Reset real time clock
+	g_ullRTCTicks = 0;
+
+	//
+	// Register the interrupt handler
+	SysTickIntRegister(SysTickISR);
+	//
+	// Enable interrupt and device
+	SysTickIntEnable();
+	SysTickEnable();
+}

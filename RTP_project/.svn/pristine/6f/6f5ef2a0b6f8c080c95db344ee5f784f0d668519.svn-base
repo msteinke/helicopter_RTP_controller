@@ -1,0 +1,298 @@
+//*****************************************************************************
+//
+// music1.c - Example program for ENCE361 - intro to interrupts.
+//          - Also used in preparation for ENCE463 Project #1 2013.
+//
+//  P.J. Bones	UCECE
+//  Last modified:  26.6.2013
+//*****************************************************************************
+
+//*****************************************************************************
+//
+//! Simple interrupt driven program:
+//!   samples with ADC0 (Pin 62 on board header)
+//!   reference high voltage on PF7 (Pin 29)
+//!  Based on 'convertV1.c'
+//!
+//*****************************************************************************
+
+
+// API Peripheral Modules
+#include "inc/hw_memmap.h"
+#include "inc/hw_types.h"
+//#include "inc/hw_ints.h"
+//#include "driverlib/adc.h"
+//#include "driverlib/pwm.h"
+#include "driverlib/gpio.h"
+//#include "driverlib/sysctl.h"
+//#include "driverlib/systick.h"
+//#include "driverlib/interrupt.h"
+#include "driverlib/debug.h"
+//#include "driverlib/timer.h"
+//#include "drivers/rit128x96x4.h"
+//#include "startup_ccs.c"
+
+// C Modules
+#include <stdio.h>
+
+// Program specific modules
+//#include "circBuf.h"
+#include "mbutton.h"
+#include "heliDisplay.h"
+#include "mdisplay.h"
+#include "yaw.h"
+#include "PID.h"
+#include "mPWM.h"
+#include "height.h"
+#include "mRTC.h"
+
+
+
+
+
+//*****************************************************************************
+// Constants
+//*****************************************************************************
+
+#define RTC_RATE_HZ 1000
+
+#define BUTTON_POLE_RATE_HZ 1000
+
+#define HEIGHT_SAMPLE_RATE_HZ 100
+
+#define PID_RATE_HZ 100
+
+//*****************************************************************************
+// Globals
+//*****************************************************************************
+
+
+//*****************************************************************************
+// Main module prototypes
+//*****************************************************************************
+
+
+/*
+float getYawError(void)
+{
+	static volatile float yawDesired;
+
+	// change the desired height
+
+
+	return (float)yawGetAngle() - yawDesired;
+}
+
+float getheightError(float* heightSetpoint)
+{
+	//static volatile float heightSetpoint;
+
+	//heightSample(); // take an ADC reading
+	;
+
+	//
+	// change the desired height
+
+
+	return *heightSetpoint - (float)currentHeight;
+}
+*/
+
+void updateSetpoints(short* yawSetpoint, short* heightSetpoint)
+{
+	// Yaw
+	if (mButtonCheck(LEFT))
+	{
+		*yawSetpoint -= 15;
+	}
+	else if (mButtonCheck(RIGHT))
+	{
+		*yawSetpoint += 15;
+	}
+
+	// Height
+	if (mButtonCheck(DOWN) && *heightSetpoint > 0)
+	{
+		*heightSetpoint -= 100;
+	}
+	else if (mButtonCheck(UP))
+	{
+		*heightSetpoint += 100;
+	}
+	return;
+}
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////    MAIN    ///////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+int main(void)
+{
+	//IntMasterDisable();
+
+	//=====SYSTEM PERIPHERAL INITIALIZATION=====
+
+	// Initialize real time clock
+	//mRTCInit(RTC_RATE_HZ);
+
+	// Millisecond timekeeping variable
+	int time;
+
+	//Add periodic tasks to be executed by systick
+	mRTCAddTask(mButtonUpdate, BUTTON_POLE_RATE_HZ);
+	mRTCAddTask(heightSample, HEIGHT_SAMPLE_RATE_HZ);
+
+	// Set up display
+    mDisplayInit(1000000);
+
+	// Set up buttons
+	mButtonInit(SELECT);
+	mButtonInit(LEFT);
+	mButtonInit(RIGHT);
+	mButtonInit(UP);
+	mButtonInit(DOWN);
+
+	// Set up PWM
+	mPWMInit();
+	mPWMEnable(PWM4, 0); // tail rotor, yaw control.
+	mPWMEnable(PWM1, 0); // main rotor, height control.
+
+	//=========CONTROL INITIALIZATION========
+
+	//PID update period
+	unsigned short delta_t = 100;
+
+	//-----altitude PID control------
+
+    // Initialize altitude module
+	heightInit();
+
+	// height PID parameters
+	float H_kp = 0.5;
+	float H_ki = 0;
+	float H_kd = 0;
+
+	// height PID controller
+	pid_t heightPID;
+	PIDInit(&heightPID);
+	PIDSet(&heightPID, H_kp, H_ki, H_kd); // set PID constants
+
+	// height PID control variables
+	short height = 0;
+    short heightSetpoint = 0; // in degrees
+    short heightError = 0;
+    short heightPIDOut = 0;
+
+
+
+	//-----yaw PID control-------
+
+	// Initialise Yaw decoder module
+	yawInit(); // yaw monitor
+
+	// Yaw PID parameters
+	float Y_kp = 2;
+	float Y_ki = 0;
+	float Y_kd = 0;
+
+	// Yaw PID controller
+	pid_t yawPID;
+	PIDInit(&yawPID);
+	PIDSet(&yawPID, Y_kp, Y_ki, Y_kd); // set PID constants
+
+	// yaw PID control variables
+	short yaw = 0;
+	short yawSetpoint = 0;
+    short yawError = 0;
+    short yawPIDOut = 0;
+
+
+
+
+    //
+    // Enable interrupts to the processor.
+    IntMasterEnable();
+
+
+    short takeOffFlag = false;
+	while (!takeOffFlag)
+	{
+		if (mButtonCheck(SELECT))
+		//if (GPIOPinRead(GPIO_PORTG_BASE, 0x80))
+		{
+			takeOffFlag = true;
+		}
+	}
+
+
+	mPWMEnable(PWM4, true); // tail rotor, yaw control.
+	mPWMEnable(PWM1, true); // main rotor, height control.
+
+	// Reset clock to zero for helicopter launch
+	mRTCSet(0);
+
+	while (1)
+	{
+		//mDisplayClear();
+
+		time = mRTCGetMilliSeconds();
+
+		// Update Setpoints
+		updateSetpoints(&yawSetpoint, &heightSetpoint);
+
+		if (time % PID_RATE_HZ == 0)
+		{
+			// ==================PID Control=================
+
+			height = heightGet();
+			yaw = yawGetAngle();
+
+			//
+			// ~~~~~~~~~~~~~~~~~ HEIGHT PID ~~~~~~~~~~~~~~~~~
+
+			heightError = heightSetpoint - height;
+
+			heightPIDOut = PIDUpdate(&heightPID, heightError, (float)delta_t/1000);
+
+			mPWMSet(PWM1, (unsigned short)heightPIDOut);
+
+
+			//
+			// ~~~~~~~~~~~~~~~~~~ YAW PID ~~~~~~~~~~~~~~~~~~~
+
+			yawError = yawSetpoint - yaw;
+
+			yawPIDOut = PIDUpdate(&yawPID, yawError, (float)delta_t/1000);
+
+			mPWMSet(PWM4, (unsigned short)yawPIDOut);
+
+			// ===============================================
+		}
+
+		//mPWMSet(PWM4, 70);
+		//mPWMSet(PWM1, 70);
+
+
+		if (time % 100 == 0)
+		{
+
+			mDisplayLine("time:%.6d mS", time, 0, 7);
+			mDisplayLine("Yaw  = %.4d' ", (int)yaw, 1, 15);
+			mDisplayLine("YSet = %.4d' ", (int)yawSetpoint, 2, 15);
+			mDisplayLine("YErr = %.4d' ", (int)yawError, 3, 15);
+			mDisplayLine("YOut = %.4d' ", (int)yawPIDOut, 4, 15);
+
+			mDisplayLine("height = %.4d ", (int)height, 5, 15);
+			mDisplayLine("Hset   = %.4d ", (int)heightSetpoint, 6, 15);
+			mDisplayLine("Herr   = %.4d ", (int)heightError, 7, 15);
+			mDisplayLine("Hout   = %.4d ", (int)heightPIDOut, 8, 15);
+
+		}
+
+	}
+}
+
+
+

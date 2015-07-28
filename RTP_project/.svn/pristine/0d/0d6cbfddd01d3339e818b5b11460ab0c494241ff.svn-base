@@ -1,0 +1,49 @@
+// *******************************************************
+//
+// mdisplay.c
+//
+// Simple module to make the OLED display easy to use.
+//  Stellaris LM3S1968 EVK
+//
+// *******************************************************
+
+#include "mdisplay.h"
+
+#include "drivers/rit128x96x4.h"
+#include <stdio.h>
+
+/* Displays a single line on the display. the display is 20 characters wide.
+ * \param inputString The string that is to be displayed on screen. The
+ * user must include the sprintf formatting options.
+ * \param data The variable that is to be inserted in inputString, and displayed.
+ * \param line The line number that the string should appear on (0 to 8).*/
+void mdisplayText(char inputString[30], int data, unsigned short line)
+{
+	//RIT128x96x4Clear();
+
+	unsigned short i = 0;
+	char displayString[20];
+	for (i = 0; i <= 20; i++)
+	{
+		displayString[i] = 0;
+	}
+
+	sprintf(displayString, inputString, data);
+    RIT128x96x4StringDraw(displayString, 0, line*10, 15);
+}
+
+
+/* clears the display */
+void mdisplayClear(void)
+{
+	RIT128x96x4Clear();
+}
+
+/* intialise the OLED display
+ * \param ulFrequency specifies the SSI Clock Frequency to be used.
+ * try using ulFrequency = 10000000  */
+void mdisplayInit(unsigned long ulFrequency)
+{
+	// intialise the OLED display
+	RIT128x96x4Init(ulFrequency);
+}

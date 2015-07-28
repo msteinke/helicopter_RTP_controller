@@ -1,0 +1,50 @@
+// *******************************************************
+//
+// decoder.c
+//
+// Support for decoding a rotary encoder module
+//  Stellaris LM3S1968 EVK
+//
+// *******************************************************
+
+/*
+
+#include "decoder.h"
+#include "driverlib/gpio.h"
+
+
+// Decoder pins, should be looked after by the decoder struct itself
+// Though for the purpose of this project where only one encoder module is
+// used this will suffice
+#define DECODER_PIN_1 GPIO_PIN_5
+#define DECODER_PIN_2 GPIO_PIN_7
+
+// Inits pins related to decoding rotary sensor input
+void
+decoder_init (void)
+{
+	//Enable GPIO module for decoder
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+
+	// setup decoder input pins
+	GPIODirModeSet(GPIO_PORTF_BASE, GPIO_PIN_5, GPIO_DIR_MODE_IN);
+	GPIODirModeSet(GPIO_PORTF_BASE, GPIO_PIN_7, GPIO_DIR_MODE_IN);
+
+	// disable internal pullups on decoder pins
+	GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_5, GPIO_STRENGTH_2MA,
+					 GPIO_PIN_TYPE_STD_STD);
+	GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_7, GPIO_STRENGTH_2MA,
+					 GPIO_PIN_TYPE_STD_STD);
+
+
+	//GPIOIntTypeSet(GPIO_PORTG_BASE, GPIO_PIN_7, GPIO_LOW_LEVEL);
+	GPIOIntTypeSet(GPIO_PORTF_BASE, GPIO_PIN_5 | GPIO_PIN_7 , GPIO_BOTH_EDGES);
+
+	GPIOPortIntRegister(GPIO_PORTF_BASE, decoderISR);
+
+	IntPrioritySet(INT_GPIOG, 0);
+
+	GPIOPinIntEnable(GPIO_PORTF_BASE, GPIO_PIN_5 | GPIO_PIN_7);
+}
+
+*/

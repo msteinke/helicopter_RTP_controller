@@ -1,0 +1,161 @@
+// *******************************************************
+//
+// yaw.c
+//
+// Functions to keep track of the yaw of a helicopter
+//  Stellaris LM3S1968 EVK
+//
+// *******************************************************
+
+
+#include "inc/hw_types.h"
+#include "driverlib/gpio.h"
+#include "inc/hw_ints.h"
+#include "driverlib/sysctl.h"
+//#include "driverlib/systick.h"
+#include "driverlib/interrupt.h"
+#include "inc/hw_memmap.h"
+
+
+#include "yaw.h"
+#include "mdisplay.h"
+
+
+// Redefine the pin symbols
+#define PIN_1 GPIO_PIN_5
+#define PIN_2 GPIO_PIN_7
+
+// STATIC VARIABLES - do these need to be volatile? yes, so that the scope is restricted.
+
+// Global for encoder heading (in encoder clicks not degrees)
+static volatile int g_clicks;
+// direction of rotation of yaw
+static volatile int g_iYawDirection;
+
+
+
+// *******************************************************
+// Interrupt handler for the decoder. This monitors two GPIO pins
+// and increments the yaw counter.
+void yawISR(void)	// consider calling this portF_ISR?
+{
+	//holds decoder pin states
+	static unsigned char g_stateLast;
+
+	GPIOPinIntClear(GPIO_PORTF_BASE, PIN_1 | PIN_2);
+
+	IntMasterDisable();
+	unsigned char pinStates = GPIOPinRead(GPIO_PORTF_BASE, PIN_1 | PIN_2);
+	IntMasterEnable();
+
+	// this can be tided up to use less temporary variables at some point before
+	// we submit our code
+
+	unsigned char A = pinStates & PIN_1;
+	unsigned char B = pinStates & PIN_2;
+	unsigned char A_changed = A == (g_stateLast & PIN_1); //Check which pin has changed state
+	unsigned char B_changed = B == (g_stateLast & PIN_2);
+
+	// Exception
+	if (A_changed && B_changed)
+	{
+		// don't change the yaw point.
+		mDisplayLine("DecoderISR() !ERROR!", g_iYawDirection, 4, 15);
+	} //throw a wobbly
+	// Theory behind the following code:
+	// http://www.rocketnumbernine.com/2010/03/06/decoding-a-rotary-encoder
+	else if ((A==B) ^ B_changed)
+	{
+		g_clicks++;
+		// change direction variable to forward/CW
+		g_iYawDirection = YAW_CW;
+	}
+	else if ((A==B) ^ A_changed)
+	{
+		g_clicks--;
+		// change direction variable to reverse/CCW
+		g_iYawDirection = YAW_CCW;
+	}
+
+
+	g_stateLast = pinStates;
+}
+
+// *******************************************************
+// Initializes the GPIO pins and their interrupt handlers.
+void yawInit(void)
+{
+	//Enable GPIO module for decoder
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+
+	// setup decoder input pins
+	GPIODirModeSet(GPIO_PORTF_BASE, PIN_1 | PIN_2, GPIO_DIR_MODE_IN);
+
+	// disable internal pullups on decoder pins
+	GPIOPadConfigSet(GPIO_PORTF_BASE, PIN_1 | PIN_2 , GPIO_STRENGTH_2MA,
+					 GPIO_PIN_TYPE_STD);
+
+	//GPIOIntTypeSet(GPIO_PORTG_BASE, PIN_2, GPIO_RISING_EDGE);
+	//GPIOIntTypeSet(GPIO_PORTG_BASE, PIN_2, GPIO_BOTH_EDGES);
+	//GPIOIntTypeSet(GPIO_PORTF_BASE, PIN_1 | PIN_2 , GPIO_RISING_EDGE);
+	GPIOIntTypeSet(GPIO_PORTF_BASE, PIN_1 | PIN_2 , GPIO_BOTH_EDGES);
+
+	GPIOPortIntRegister(GPIO_PORTF_BASE, yawISR);
+
+	IntPrioritySet(INT_GPIOG, 0);
+
+	GPIOPinIntEnable(GPIO_PORTF_BASE, PIN_1 | PIN_2);
+	//GPIOPinIntEnable(GPIO_PORTF_BASE, PIN_2);
+}
+
+// *******************************************************
+// Returns the value of g_clicks. This is the location of
+// the helicopter on the yaw axis.
+int yawGetClicks(void)
+{
+	return g_clicks;
+}
+
+// *******************************************************
+// Sets the yaw counter to a desired value.
+void yawSetClicks(int value)
+{
+	g_clicks = value;
+}
+
+// *******************************************************
+// Returns the angle of yaw. This is the location of
+// the helicopter on the yaw axis.
+int yawGetAngle(void)
+{
+	// divide by two because there are two clicks per slot
+	return g_clicks * (360/2) / YAW_NUM_SLOTS;
+}
+
+// *******************************************************
+// Returns the last known direction of rotation of the wheel.
+int yawGetDirection(void)
+{
+	return g_iYawDirection;
+}
+
+// *******************************************************
+// Returns the last known direction of rotation of the wheel.
+int yawIsCW(void)
+{
+	return g_iYawDirection;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+

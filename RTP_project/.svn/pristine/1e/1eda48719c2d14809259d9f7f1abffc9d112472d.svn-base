@@ -1,0 +1,36 @@
+// *******************************************************
+//
+// PID.h
+//
+// Functions to set-up PID for a helicopter
+//  Stellaris LM3S1968 EVK
+//
+// *******************************************************
+
+#ifndef PID_H_
+#define PID_H_
+
+
+// GLOBAL CONSTANTS
+#define YAW_MAX 98
+#define YAW_MIN 2
+
+typedef struct
+{
+	float error_integrated;
+	float error_previous;
+	float K_P;
+	float K_I;
+	float K_D;
+	float enabled;
+	float control_previous;
+} pid_t;
+
+// PROTOTYPES
+void PIDInit(pid_t* state);
+void PIDSet(pid_t* state, float K_P, float K_I, float K_D);
+float PIDUpdate(pid_t* state, float error, float delta_t);
+void PIDEnable(pid_t* state);
+void PIDDisable(pid_t* state);
+
+#endif /*PID_H_*/
